@@ -33,6 +33,7 @@ var (
 	ContentTypeCSS  = "text/css;charset=utf-8"
 	ContentTypeJS   = "text/plain;charset=utf-8"
 	ContentTypeHTML = "text/html; charset=utf-8"
+	FontTypeList    = []string{".woff", ".ttf", ".eot", ".svg"}
 )
 
 func SetAssetsPath(path string) {
@@ -66,6 +67,12 @@ func AssetFilter(c *revel.Controller, fc []revel.Filter) {
 		ServeStatic(uri, ContentTypeHTML, c)
 		return
 	}
+	for _, suffix := range FontTypeList {
+		if strings.HasSuffix(uri, suffix) {
+			ServeStatic(uri, ContentTypeHTML, c)
+			return
+		}
+	}
 	if val, ok := route[uri]; ok {
 		// if name, ok := route[uri] && ok {
 		ServeStatic(path.Join("/html", val), ContentTypeHTML, c)
@@ -76,31 +83,41 @@ func AssetFilter(c *revel.Controller, fc []revel.Filter) {
 
 func GetFilePath(uri string) string {
 	fileSuffix := strings.Replace(uri, "/asset/", "", 1)
+	fileSuffix = strings.Replace(fileSuffix, "/fonts/", "/font/", 1)
 	return path.Join(AssetPath, fileSuffix)
 }
 
 func ServeCoffee(uri string, c *revel.Controller) {
 	filePath := GetFilePath(uri)
-	revel.INFO.Printf("read file %s\n", filePath)
-	data, err := exec.Command("coffee", "-bp", filePath).Output()
-	if err != nil {
-		revel.INFO.Printf("command error %s\n", err.Error())
-		c.Result = CommonResult{Data: []byte(`sorry file not found`)}
-		return
-	}
+	data := findInCache(filePath, buildCoffee)
 	c.Result = CommonResult{Data: data, ContentType: ContentTypeJS}
 }
 
 // scss 样式
 func ServeSCSS(uri string, c *revel.Controller) {
 	filePath := GetFilePath(uri)
-	data, err := exec.Command("scss", filePath).Output()
-	if err != nil {
-		revel.INFO.Printf("command error %s\n", err.Error())
-		c.Result = CommonResult{Data: []byte(`sorry file not found`)}
-		return
-	}
+	data := findInCache(filePath, buildScss)
 	c.Result = CommonResult{Data: data, ContentType: ContentTypeCSS}
+}
+
+// 编译coffee
+func buildCoffee(filePath string) []byte {
+	cmd := exec.Command("coffee", "-bp", filePath)
+	data, err := cmd.Output()
+	if err != nil {
+		data, _ = cmd.CombinedOutput()
+	}
+	return []byte(data)
+}
+
+// 编译scss 文件
+func buildScss(filePath string) []byte {
+	cmd := exec.Command("scss", filePath)
+	data, err := cmd.Output()
+	if err != nil {
+		data, _ = cmd.CombinedOutput()
+	}
+	return []byte(data)
 }
 
 func ServeStatic(uri, contentType string, c *revel.Controller) {
